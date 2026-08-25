@@ -1,0 +1,6 @@
+# music archive content (alac master + generated flac/aac) – not tracked in git
+/cd/
+/covers/
+
+# configuration with passwords and allowed IPs
+/config.json

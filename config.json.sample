@@ -1,0 +1,19 @@
+{
+  "title": "My Music",
+  "users": [
+    { "user": "name", "password": "change-me", "email": "user@sample.com", "rights": ["move", "delete", "cover"] },
+    { "user": "viewer", "password": "change-me", "email": "viewer@sample.com" }
+  ],
+  "smtp": {
+    "host": "smtp.gmail.com",
+    "port": 465,
+    "user": "you@gmail.com",
+    "password": "gmail-app-password",
+    "from": "you@gmail.com"
+  },
+  "autoLoginIps": [
+    "127.0.0.1",
+    "::1",
+    { "ip": "192.168.1.0/24", "rights": ["move"] }
+  ]
+}
