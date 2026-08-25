@@ -249,7 +249,7 @@ function renderOverview() {
   for (const album of DATA.albums) {
     const card = document.createElement('a');
     card.className = 'album-card' + (player.album === album ? ' playing' : '');
-    card.href = '#album=' + encodeURIComponent(album.id);
+    card.href = '#album=' + hashId(album.id);
     card.innerHTML = coverHtml(album, 'album-cover') +
       `<div class="album-info"><h2>${esc(album.title)}</h2>` +
       `<p>${esc(album.artist)}${album.year ? ' · ' + album.year : ''}</p>` +
@@ -325,6 +325,12 @@ function markPlayingTrack() {
     li.classList.toggle('playing', !!on);
     li.classList.toggle('paused', !!on && audio.paused);
   });
+}
+
+// Encode an album id for the URL hash: each path segment separately so the "/" stays
+// readable in the address bar (browsers show %20 as a space but keep %2F encoded).
+function hashId(id) {
+  return id.split('/').map(encodeURIComponent).join('/');
 }
 
 function currentAlbumId() {
@@ -488,7 +494,7 @@ function playTrack(album, index) {
   pbTitle.textContent = t.title;
   pbArtist.textContent = (t.artist || album.artist) + ' – ' + album.title;
   pbCover.innerHTML = coverHtml(album, 'pb-cover-img');
-  pbCover.onclick = () => { location.hash = '#album=' + encodeURIComponent(album.id); };
+  pbCover.onclick = () => { location.hash = '#album=' + hashId(album.id); };
   pbDur.textContent = fmtTime(t.duration);
   bar.hidden = false;
   document.body.classList.add('has-player');
