@@ -44,6 +44,7 @@ music/                 application root (webroot subdirectory /music/)
 ├── authLib.php        shared authentication logic (session, IPs, users)
 ├── transcode.sh       derives FLAC and AAC copies of the ALAC masters (cd/flac, cd/aac)
 ├── fix-perms.sh       creates cd/ and covers/ and sets ownership and permissions
+├── add-cd.sh          after adding CDs: fix-perms → transcode → fix-perms in one go
 ├── check.sh           security / functionality checklist (curl)
 ├── config.json        users and allowed IPs (MUST NOT be committed to git!)
 ├── cd/                the archive – not in git
