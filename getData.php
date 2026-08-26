@@ -434,8 +434,17 @@ if ($action === 'coverSearch') {
     $artist = trim((string)($_GET['artist'] ?? $meta['artist']));
     $title = trim((string)($_GET['title'] ?? $meta['title']));
     $lucene = fn(string $v) => '"' . addcslashes($v, '"\\') . '"';
-    $query = 'release:' . $lucene($title) . ($artist !== '' ? ' AND artist:' . $lucene($artist) : '');
-    [$status, $body] = httpGet('https://musicbrainz.org/ws/2/release/?fmt=json&limit=12&query=' . rawurlencode($query));
+    // a dot glued to a word ("Vol.1") breaks the MusicBrainz full-text search, so it becomes a space;
+    // if the exact title finds nothing, the "Vol. N" suffix is dropped and the search is repeated
+    $normalized = trim(preg_replace('/\s+/', ' ', preg_replace('/(?<=\w)\.(?=\w)/', ' ', $title)));
+    $candidates = [$normalized];
+    $stripped = trim(preg_replace('/[\s,:-]*\b(vol|volume|part|pt)\b\.?\s*\d+\s*$/i', '', $normalized));
+    if ($stripped !== '' && $stripped !== $normalized) $candidates[] = $stripped;
+    foreach ($candidates as $t) {
+        $query = 'release:' . $lucene($t) . ($artist !== '' ? ' AND artist:' . $lucene($artist) : '');
+        [$status, $body] = httpGet('https://musicbrainz.org/ws/2/release/?fmt=json&limit=12&query=' . rawurlencode($query));
+        if ($status === 200 && !empty(json_decode($body, true)['releases'])) break;
+    }
     if ($status !== 200 || $body === null) {
         http_response_code(502);
         echo json_encode(['error' => "MusicBrainz request failed (HTTP $status)"]);
