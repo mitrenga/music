@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Music</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#4338CA">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="images/app-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="192x192" href="images/app-icon-192x192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
 </head>
 <body>

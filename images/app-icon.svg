@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>Music Archive</title>
+  <desc>Application icon showing a music note stored in an archive box.</desc>
+  <defs>
+    <linearGradient id="bg" x1="152" y1="104" x2="872" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#4338CA"/>
+    </linearGradient>
+    <linearGradient id="box" x1="292" y1="474" x2="724" y2="840" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EDE9FE"/>
+    </linearGradient>
+    <linearGradient id="note" x1="430" y1="286" x2="715" y2="622" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE047"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <filter id="shadow" x="180" y="196" width="664" height="700" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="32" flood-color="#24156A" flood-opacity=".32"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="426" r="254" fill="#FFFFFF" fill-opacity=".08"/>
+
+  <g filter="url(#shadow)">
+    <path d="M252 432C252 409.9 269.9 392 292 392H732C754.1 392 772 409.9 772 432V494H252V432Z" fill="#DDD6FE"/>
+    <path d="M304 464H720C742.1 464 760 481.9 760 504V796C760 829.1 733.1 856 700 856H324C290.9 856 264 829.1 264 796V504C264 481.9 281.9 464 304 464Z" fill="url(#box)"/>
+    <rect x="418" y="628" width="188" height="54" rx="27" fill="#5B4ED0"/>
+
+    <path d="M594 256V491.5C575.8 481.6 553.6 476 530 476C463.7 476 410 519 410 572C410 625 463.7 668 530 668C596.3 668 650 625 650 572V356L746 330V248L594 288V256Z" fill="url(#note)" stroke="#5B21B6" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M650 288L746 262V330L650 356V288Z" fill="#FB923C"/>
+  </g>
+
+</svg>
