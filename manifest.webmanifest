@@ -1,7 +1,7 @@
 {
   "name": "Music",
   "short_name": "Music",
-  "description": "Private music archive – FLAC/ALAC albums streamed from your own server.",
+  "description": "Private music archive – FLAC albums streamed from your own server.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
