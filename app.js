@@ -705,7 +705,16 @@ function playTrack(album, index) {
   bar.hidden = false;
   document.body.classList.add('has-player');
   markPlayingTrack();
+  updatePlayButton();   // after a gapless swap the new element is already playing and fires no 'play' event
   updateMediaSession(album, t);
+}
+
+// the button state is derived from the element, not from events: at the natural end
+// of a file the browser fires 'pause' before 'ended', which would otherwise leave the
+// button showing "stopped" while the gapless-started next track keeps playing
+function updatePlayButton() {
+  pbPlay.innerHTML = audio.paused ? ICON.play : ICON.pause;
+  pbPlay.title = audio.paused ? 'Play' : 'Pause';
 }
 
 // Two <audio> elements: `audio` plays, `nextAudio` preloads the following track
@@ -762,8 +771,8 @@ function togglePlay() {
 // events are bound to both elements; handlers ignore the one that is only preloading
 for (const el of [audio, nextAudio]) {
   el.addEventListener('ended', () => { if (el === audio) step(1); });
-  el.addEventListener('play', () => { if (el !== audio) return; pbPlay.innerHTML = ICON.pause; pbPlay.title = 'Pause'; markPlayingTrack(); });
-  el.addEventListener('pause', () => { if (el !== audio) return; pbPlay.innerHTML = ICON.play; pbPlay.title = 'Play'; markPlayingTrack(); });
+  el.addEventListener('play', () => { if (el !== audio) return; updatePlayButton(); markPlayingTrack(); });
+  el.addEventListener('pause', () => { if (el !== audio) return; updatePlayButton(); markPlayingTrack(); });
   el.addEventListener('timeupdate', () => {
     if (el !== audio) return;
     if (!pbSeek.matches(':active')) pbSeek.value = audio.duration ? audio.currentTime / audio.duration * 1000 : 0;
