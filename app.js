@@ -244,9 +244,9 @@ function renderOverview() {
   breadcrumb.innerHTML = '';
   document.title = APP_TITLE;
 
-  const grid = document.createElement('div');
-  grid.className = 'album-grid';
-  for (const album of DATA.albums) {
+  const list = document.createElement('div');
+  list.className = 'album-list';
+  const cardOf = album => {
     const card = document.createElement('a');
     card.className = 'album-card' + (player.album === album ? ' playing' : '');
     card.href = '#album=' + hashId(album.id);
@@ -254,9 +254,34 @@ function renderOverview() {
       `<div class="album-info"><h2>${esc(album.title)}</h2>` +
       `<p>${esc(album.artist)}${album.year ? ' · ' + album.year : ''}</p>` +
       `<p>${album.trackCount} tracks · ${fmtTime(album.duration)}</p></div>`;
-    grid.appendChild(card);
+    return card;
+  };
+  // consecutive albums of the same artist (the list is sorted by artist) form a
+  // highlighted group with the artist's name above and below; single albums
+  // share a plain grid between the groups
+  let loose = null;   // current grid of ungrouped albums
+  const albums = DATA.albums;
+  for (let i = 0; i < albums.length;) {
+    let j = i + 1;
+    while (j < albums.length && albums[j].artist === albums[i].artist) j++;
+    if (j - i > 1) {
+      loose = null;
+      const group = document.createElement('section');
+      group.className = 'artist-group';
+      const grid = document.createElement('div');
+      grid.className = 'album-grid';
+      for (let k = i; k < j; k++) grid.appendChild(cardOf(albums[k]));
+      group.innerHTML = `<h3 class="artist-sep">${esc(albums[i].artist)}</h3>`;
+      group.appendChild(grid);
+      group.insertAdjacentHTML('beforeend', `<h3 class="artist-sep artist-sep-end">${esc(albums[i].artist)}</h3>`);
+      list.appendChild(group);
+    } else {
+      if (!loose) { loose = document.createElement('div'); loose.className = 'album-grid'; list.appendChild(loose); }
+      loose.appendChild(cardOf(albums[i]));
+    }
+    i = j;
   }
-  content.replaceChildren(grid);
+  content.replaceChildren(list);
 }
 
 // ---- album view ----

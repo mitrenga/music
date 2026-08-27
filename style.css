@@ -3,6 +3,7 @@
 :root {
   --bg: #14161a;
   --card: #1e2128;
+  --group: #1a2030;   /* background of an artist's album group */
   --text: #e8e8ea;
   --muted: #9aa0aa;
   --accent: #4da3ff;
@@ -123,11 +124,35 @@ main { padding: 12px 28px 40px; }
 
 
 /* ---- album overview ---- */
+.album-list { display: flex; flex-direction: column; gap: 20px; }
+
 .album-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 20px;
 }
+
+/* several consecutive albums of one artist: a tinted block with the artist's
+   name as a separator at the top and the bottom */
+.artist-group {
+  background: var(--group);
+  border: 1px solid #2e3340;
+  border-radius: 16px;
+  padding: 0 16px 16px;
+}
+.artist-group .album-grid { margin-top: 12px; }
+.artist-sep {
+  margin: 0 -16px;
+  padding: 10px 20px;
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(255,255,255,.04);
+  border-radius: 16px 16px 0 0;
+}
+.artist-sep-end { border-radius: 0; margin: 16px -16px -16px; padding-top: 8px; padding-bottom: 8px; border-radius: 0 0 16px 16px; font-size: .75rem; opacity: .8; }
 
 .album-card {
   background: var(--card);
