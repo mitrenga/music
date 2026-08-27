@@ -349,11 +349,16 @@ function renderAlbum(album) {
     `<div class="album-head">${coverHtml(album, 'album-big-cover', true)}` +
     `<div class="album-head-info"><h2>${esc(album.title)}</h2><p>${meta}</p>` +
     `<button class="btn-play-album">${ICON.play} Play album</button>` +
-    (RIGHTS.includes('cover') ? `<button class="btn-cover" title="Search the Cover Art Archive">${album.cover ? 'Change cover…' : 'Find cover…'}</button>` : '') +
+    (RIGHTS.includes('cover') ? `<button class="btn-cover" title="Search the Cover Art Archive">${album.cover ? 'Change cover…' : 'Find cover…'}</button>` +
+      `<button class="btn-cover btn-cover-upload" title="Use an image file from this device">Upload cover…</button>` +
+      `<input type="file" class="cover-file" accept="image/jpeg,image/png,image/gif,image/webp" hidden>` : '') +
     `</div></div>` +
     `<ol class="track-list">${rows}</ol>`;
   view.querySelector('.btn-play-album').addEventListener('click', () => playAlbum(album, 0));
   view.querySelector('.btn-cover')?.addEventListener('click', () => openCoverPicker(album));
+  const coverFile = view.querySelector('.cover-file');
+  view.querySelector('.btn-cover-upload')?.addEventListener('click', () => coverFile.click());
+  coverFile?.addEventListener('change', () => { if (coverFile.files[0]) uploadCover(album, coverFile.files[0]); });
   view.querySelectorAll('.track').forEach(li =>
     li.addEventListener('click', () => playAlbum(album, +li.dataset.index)));
   content.replaceChildren(view);
@@ -379,6 +384,30 @@ function hashId(id) {
 function currentAlbumId() {
   const m = location.hash.match(/^#album=(.+)$/);
   return m ? decodeURIComponent(m[1]) : null;
+}
+
+// applies a freshly saved cover (server reply of coverSave/coverUpload) to the album everywhere
+function applySavedCover(album, r) {
+  // cache-busting query so the browser shows the new file immediately
+  album.cover = r.cover + '?v=' + Date.now();
+  album.thumb = r.thumb ? r.thumb + '?v=' + Date.now() : null;
+  flashStatus('Cover saved');
+  render();
+  if (player.album === album) pbCover.innerHTML = coverHtml(album, 'pb-cover-img');
+}
+
+// uploads the user's own image file as the album cover
+async function uploadCover(album, file) {
+  if (album.cover && !confirm(`Replace the current cover of ${album.artist} – ${album.title} with "${file.name}"?`)) return;
+  const body = new FormData();
+  body.append('cover', file);
+  flashStatus('Uploading cover…');
+  try {
+    const r = await fetchJson('getData.php?action=coverUpload&id=' + encodeURIComponent(album.id), { method: 'POST', body });
+    applySavedCover(album, r);
+  } catch (e) {
+    flashStatus('Upload failed: ' + e.message);
+  }
 }
 
 // ---- cover picker ----
@@ -458,14 +487,9 @@ function confirmCover(album, c, picker) {
       const r = await fetchJson('getData.php?action=coverSave&id=' + encodeURIComponent(album.id), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mbid: c.mbid }),
       });
-      // cache-busting query so the browser shows the new file immediately
-      album.cover = r.cover + '?v=' + Date.now();
-      album.thumb = r.thumb ? r.thumb + '?v=' + Date.now() : null;
       dlg.remove();
       picker.remove();
-      flashStatus('Cover saved');
-      render();
-      if (player.album === album) pbCover.innerHTML = coverHtml(album, 'pb-cover-img');
+      applySavedCover(album, r);
     } catch (e) {
       status.textContent = 'Saving failed: ' + e.message;
       dlg.querySelectorAll('button').forEach(b => b.disabled = false);

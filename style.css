@@ -214,6 +214,28 @@ main { padding: 12px 28px 40px; }
   flex-shrink: 0;
   font-size: 1rem;
 }
+/* generated cover in the album view: same colored gradient as in the grid, larger type */
+.album-big-cover.cover-placeholder {
+  background: linear-gradient(145deg, hsl(var(--hue) 40% 32%), hsl(calc(var(--hue) + 40) 45% 18%));
+  padding: 16px;
+  gap: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.album-big-cover.cover-placeholder span {
+  font-size: .9rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.album-big-cover.cover-placeholder b {
+  font-size: 1.35rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .album-head-info h2 { font-size: 1.6rem; font-weight: 600; }
 .album-head-info p { color: var(--muted); margin: 6px 0 16px; }
 
@@ -367,6 +389,9 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
   main { padding: 8px 16px 40px; }
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   .album-big-cover { width: 140px; height: 140px; }
+  .album-big-cover.cover-placeholder { padding: 12px; }
+  .album-big-cover.cover-placeholder span { font-size: .75rem; }
+  .album-big-cover.cover-placeholder b { font-size: 1.05rem; -webkit-line-clamp: 3; }
   .album-head-info h2 { font-size: 1.25rem; }
   #player {
     grid-template-columns: 48px 1fr auto;

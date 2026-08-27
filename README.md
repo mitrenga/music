@@ -22,7 +22,9 @@ authentication model: `config.json` from the gallery can be copied 1:1.
 - **Lock screen / headset** — Media Session API: title, artist, cover and
   transport controls on the phone's lock screen
 - **Covers** — `cover.jpg` in the album directory, or pick one from the Cover
-  Art Archive with a preview and explicit confirmation (`cover` right)
+  Art Archive with a preview and explicit confirmation, or upload your own image
+  file (JPEG/PNG/GIF/WebP, max 20 MB – raise `upload_max_filesize`,
+  `post_max_size` and nginx `client_max_body_size` if needed) (`cover` right)
 - **Formats** — the archive is FLAC only (lossless, plays in every current
   browser); CDs ripped as ALAC by Apple Music are imported by `transcode.sh`
 - **Login** — identical to the gallery: allowed IPs sign in automatically,

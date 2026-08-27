@@ -7,6 +7,7 @@
 //   getData.php?action=album&id=Artist/Album -> album tracks with FLAC URLs
 //   getData.php?action=coverSearch&id=X   -> cover candidates from MusicBrainz / Cover Art Archive
 //   getData.php?action=coverSave&id=X     -> POST {mbid} downloads the chosen cover (needs the 'cover' right)
+//   getData.php?action=coverUpload&id=X   -> multipart POST, field 'cover' = own image file (needs the 'cover' right)
 session_name('userSession');   // instead of the generic PHPSESSID (the domain is shared with other apps)
 session_start();
 header('Content-Type: application/json; charset=utf-8');
@@ -446,6 +447,39 @@ if ($action === 'coverSearch') {
     exit;
 }
 
+// Stores raw image bytes as <album>/cover.jpg (replacing any existing cover),
+// refreshes the thumbnail and prints the JSON reply. Shared by coverSave and coverUpload.
+function storeCover(string $a, string $b, string $img, int $badImageStatus): void {
+    global $SRC, $COVERS;
+    $dir = "$SRC/$a/$b";
+    $tmp = "$dir/.cover.download";
+    if (@file_put_contents($tmp, $img, LOCK_EX) === false) {
+        http_response_code(500);
+        echo json_encode(['error' => 'album directory is not writable (run fix-perms.sh)']);
+        exit;
+    }
+    $info = @getimagesize($tmp);
+    if ($info === false || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true)) {
+        @unlink($tmp);
+        http_response_code($badImageStatus);
+        echo json_encode(['error' => 'the file is not a JPEG/PNG/GIF/WebP image']);
+        exit;
+    }
+    // normalize to JPEG (max 1200 px) so every album carries a plain cover.jpg
+    exec(sprintf('convert %s -auto-orient -resize 1200x1200\> -quality 90 %s 2>/dev/null',
+        escapeshellarg($tmp), escapeshellarg("$dir/cover.jpg")), $out, $rc);
+    @unlink($tmp);
+    if ($rc !== 0 || !is_file("$dir/cover.jpg")) {
+        http_response_code(500);
+        echo json_encode(['error' => 'could not convert the cover (ImageMagick)']);
+        exit;
+    }
+    foreach (['cover.jpeg', 'cover.png', 'folder.jpg', 'folder.png'] as $old) @unlink("$dir/$old");   // cover.jpg now wins
+    @unlink("$COVERS/$a/$b.jpg");   // force a fresh thumbnail
+    echo json_encode(['ok' => true] + albumCover($a, $b, $dir), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // POST {mbid} – downloads the front cover of the chosen release into the album
 // directory as cover.jpg (replacing an existing one) and refreshes the thumbnail
 if ($action === 'coverSave') {
@@ -471,33 +505,32 @@ if ($action === 'coverSave') {
         echo json_encode(['error' => "cover download failed (HTTP $status)"]);
         exit;
     }
-    $dir = "$SRC/$a/$b";
-    $tmp = "$dir/.cover.download";
-    if (@file_put_contents($tmp, $img, LOCK_EX) === false) {
-        http_response_code(500);
-        echo json_encode(['error' => 'album directory is not writable (run fix-perms.sh)']);
+    storeCover($a, $b, $img, 502);
+}
+
+// multipart POST with an image in the 'cover' field – stores the user's own file
+// as cover.jpg (replacing an existing one) and refreshes the thumbnail
+if ($action === 'coverUpload') {
+    requireRight($rights, 'cover');
+    $parts = albumPath($SRC, (string)($_GET['id'] ?? ''));
+    if ($parts === null) {
+        http_response_code(404);
+        echo json_encode(['error' => 'album not found']);
         exit;
     }
-    $info = @getimagesize($tmp);
-    if ($info === false || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true)) {
-        @unlink($tmp);
-        http_response_code(502);
-        echo json_encode(['error' => 'downloaded file is not an image']);
+    [$a, $b] = $parts;
+    $f = $_FILES['cover'] ?? null;
+    if ($f === null || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($f['tmp_name'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'no file uploaded (or it exceeds the server upload limit)']);
         exit;
     }
-    // normalize to JPEG (max 1200 px) so every album carries a plain cover.jpg
-    exec(sprintf('convert %s -auto-orient -resize 1200x1200\> -quality 90 %s 2>/dev/null',
-        escapeshellarg($tmp), escapeshellarg("$dir/cover.jpg")), $out, $rc);
-    @unlink($tmp);
-    if ($rc !== 0 || !is_file("$dir/cover.jpg")) {
-        http_response_code(500);
-        echo json_encode(['error' => 'could not convert the cover (ImageMagick)']);
+    if ($f['size'] > 20 * 1024 * 1024) {
+        http_response_code(413);
+        echo json_encode(['error' => 'file is too large (max 20 MB)']);
         exit;
     }
-    foreach (['cover.jpeg', 'cover.png', 'folder.jpg', 'folder.png'] as $old) @unlink("$dir/$old");   // cover.jpg now wins
-    @unlink("$COVERS/$a/$b.jpg");   // force a fresh thumbnail
-    echo json_encode(['ok' => true] + albumCover($a, $b, $dir), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    storeCover($a, $b, (string)file_get_contents($f['tmp_name']), 400);
 }
 
 http_response_code(400);
