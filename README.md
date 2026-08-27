@@ -28,8 +28,10 @@ authentication model: `config.json` from the gallery can be copied 1:1.
 - **Formats** — CDs ripped as ALAC are converted in the background to FLAC and
   AAC copies; tracks still converting are marked ⏳ and start when ready
 - **Login** — identical to the gallery: allowed IPs sign in automatically,
-  everyone else with username + password (reset by e-mail); `config.json`
-  is interchangeable between the two applications
+  everyone else with username + password (reset by e-mail); a password login
+  is remembered indefinitely by a signed cookie renewed on every visit
+  (invalidated by a password change or sign-out); `config.json` is
+  interchangeable between the two applications
 - **Fullscreen** — ⛶ button in the bottom right corner
 
 ## Layout

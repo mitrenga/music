@@ -37,6 +37,58 @@ function autoLoginEntries(?array $config): array {
     return $entries;
 }
 
+// ---- persistent login ("remember me") ----
+// After a password login a signed cookie keeps the user signed in even after
+// the PHP session expires. Browsers cap cookie lifetime at ~400 days, so the
+// cookie is re-issued on every request – it never expires while the app is
+// visited at least once in REMEMBER_DAYS. The signature key is
+// derived from the user's password, so changing the password (or deleting the
+// user) invalidates all their cookies – no extra secret file is needed.
+const REMEMBER_COOKIE = 'userRemember';
+const REMEMBER_DAYS = 400;
+
+function rememberKey(?array $config, string $user): ?string {
+    foreach (($config['users'] ?? []) as $usr) {
+        if (($usr['user'] ?? null) === $user) {
+            return hash_hmac('sha256', (string)($usr['password'] ?? ''), 'music-remember:' . __DIR__);
+        }
+    }
+    return null;
+}
+
+function rememberCookieOptions(int $expires): array {
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $path = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/') . '/';
+    return ['expires' => $expires, 'path' => $path, 'secure' => $https, 'httponly' => true, 'samesite' => 'Lax'];
+}
+
+function setRememberCookie(?array $config, string $user): void {
+    $key = rememberKey($config, $user);
+    if ($key === null) return;
+    $expires = time() + REMEMBER_DAYS * 86400;
+    $payload = base64_encode($user) . '.' . $expires;
+    $token = $payload . '.' . hash_hmac('sha256', $payload, $key);
+    setcookie(REMEMBER_COOKIE, $token, rememberCookieOptions($expires));
+}
+
+function clearRememberCookie(): void {
+    if (isset($_COOKIE[REMEMBER_COOKIE])) setcookie(REMEMBER_COOKIE, '', rememberCookieOptions(1));
+}
+
+// Validates the remember cookie; returns the user name or null.
+function userFromRememberCookie(?array $config): ?string {
+    $token = $_COOKIE[REMEMBER_COOKIE] ?? '';
+    $parts = explode('.', $token);
+    if (count($parts) !== 3) return null;
+    [$b64, $expires, $sig] = $parts;
+    $user = base64_decode($b64, true);
+    if ($user === false || $user === '' || !ctype_digit($expires) || (int)$expires < time()) return null;
+    $key = rememberKey($config, $user);
+    if ($key === null) return null;
+    return hash_equals(hash_hmac('sha256', "$b64.$expires", $key), $sig) ? $user : null;
+}
+
 // Returns the signed-in user name, or null. The session is re-validated on
 // every request: removing an IP or deleting a user in the config takes effect
 // immediately.
@@ -70,9 +122,19 @@ function resolveAuthUser(?array $config): ?string {
         }
     }
 
+    // persistent login cookie (set after a password login)
+    if ($user === null && ($remembered = userFromRememberCookie($config)) !== null) {
+        $_SESSION['user'] = $user = $remembered;
+    }
+
     // automatic sign-in by IP
     if ($user === null && ipMatches($clientIp, array_column(autoLoginEntries($config), 'ip'))) {
         $_SESSION['user'] = $user = '@ip:' . $clientIp;
+    }
+
+    // sliding expiry: renew the persistent cookie of a password user
+    if ($user !== null && !str_starts_with($user, '@') && isset($_COOKIE[REMEMBER_COOKIE]) && !headers_sent()) {
+        setRememberCookie($config, $user);
     }
 
     return $user;

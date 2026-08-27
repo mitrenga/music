@@ -66,6 +66,7 @@ if ($action === 'login') {
         if (hash_equals((string)$usr['user'], $u) && hash_equals((string)$usr['password'], $p)) {
             session_regenerate_id(true);
             $_SESSION['user'] = $u;
+            setRememberCookie($config, $u);   // stay signed in across browser restarts
             echo json_encode(['auth' => true, 'user' => $u, 'rights' => resolveRights($config, $u)]);
             exit;
         }
@@ -76,6 +77,7 @@ if ($action === 'login') {
 }
 
 if ($action === 'logout') {
+    clearRememberCookie();
     session_destroy();
     echo json_encode(['auth' => false]);
     exit;
