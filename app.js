@@ -185,12 +185,41 @@ async function loadData() {
     const list = (await fetchJson('getData.php?action=albums')).albums;
     DATA = { albums: list.map(a => ({ ...a, trackCount: a.tracks, tracks: null, loading: null })) };
     statusEl.textContent = '';
+    document.getElementById('reload').hidden = false;
     render();
   } catch (e) {
     statusEl.textContent = '';
     content.innerHTML = '<p class="loading">Failed to load the archive (getData.php).</p>';
   }
 }
+
+// Re-reads the album list from the server (after CDs were added) without
+// touching playback: the album that is playing keeps its object and track
+// list so the queue continues; every other album is loaded afresh on demand.
+async function reloadData() {
+  const btn = document.getElementById('reload');
+  btn.disabled = true;
+  btn.classList.add('busy');
+  try {
+    const list = (await fetchJson('getData.php?action=albums')).albums;
+    DATA = { albums: list.map(a => {
+      const fresh = { ...a, trackCount: a.tracks, tracks: null, loading: null };
+      if (player.album && player.album.id === a.id) {
+        Object.assign(player.album, fresh, { tracks: player.album.tracks });
+        return player.album;
+      }
+      return fresh;
+    }) };
+    render();
+    flashStatus(`${DATA.albums.length} albums`);
+  } catch (e) {
+    flashStatus('Reload failed');
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('busy');
+  }
+}
+document.getElementById('reload').addEventListener('click', () => { if (DATA) reloadData(); });
 
 // fetches the track list if not loaded yet (concurrent callers share one fetch)
 function ensureAlbum(album) {

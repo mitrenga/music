@@ -32,7 +32,7 @@ h1 { font-size: 1.5rem; font-weight: 600; }
 }
 #breadcrumb a:hover { text-decoration: underline; }
 
-#logout {
+#logout, #reload {
   position: fixed;
   top: 14px;
   right: 14px;
@@ -47,12 +47,13 @@ h1 { font-size: 1.5rem; font-weight: 600; }
   font-size: 1.2rem;
   transition: background .15s, color .15s;
 }
-#logout:hover { background: rgba(255,255,255,.25); color: var(--text); }
+#logout:hover, #reload:hover { background: rgba(255,255,255,.25); color: var(--text); }
+#reload { font-size: 1.4rem; }
+body.has-logout #reload { right: 72px; }   /* sits left of the logout button */
+#reload:disabled { cursor: default; }
+#reload.busy { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* album controls shift left while the logout button is visible */
-body.has-logout .an-close   { right: 72px; }
-body.has-logout .an-shuffle { right: 130px; }
-body.has-logout .an-play    { right: 188px; }
 
 #fs-toggle {
   position: fixed;

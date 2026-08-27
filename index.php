@@ -13,6 +13,7 @@
   <nav id="breadcrumb"></nav>
   <span id="status"></span>
   <button id="logout" hidden title="Sign out">&#x23FB;</button>
+  <button id="reload" hidden title="Reload the album list">&#x21BB;</button>
   <button id="fs-toggle" title="Fullscreen">&#x26F6;</button>
 </header>
 <main id="content">
