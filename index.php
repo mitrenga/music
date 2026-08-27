@@ -31,7 +31,6 @@
     <input id="pb-seek" type="range" min="0" max="1000" value="0">
     <span id="pb-dur">0:00</span>
   </div>
-  <select id="pb-format" title="Playback quality"></select>
   <input id="pb-volume" type="range" min="0" max="100" value="100" title="Volume">
   <audio id="audio" preload="auto"></audio>
   <audio id="audio2" preload="auto"></audio>   <!-- the next track is preloaded here for gapless playback -->

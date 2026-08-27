@@ -285,7 +285,7 @@ function renderAlbum(album) {
       rows += `<li class="disc">Disc ${t.disc}</li>`;
       lastDisc = t.disc;
     }
-    rows += `<li class="track${trackSource(t) ? '' : ' converting'}" data-index="${i}" title="${trackSource(t) ? '' : 'Converting to ' + FORMAT.toUpperCase() + '…'}">` +
+    rows += `<li class="track" data-index="${i}">` +
       `<span class="t-no">${t.no}</span>` +
       `<span class="t-title">${esc(t.title)}` +
       (album.compilation && t.artist ? `<small>${esc(t.artist)}</small>` : '') + `</span>` +
@@ -304,17 +304,6 @@ function renderAlbum(album) {
     li.addEventListener('click', () => playAlbum(album, +li.dataset.index)));
   content.replaceChildren(view);
   markPlayingTrack();
-  // tracks still being converted: refresh the list until all are playable
-  if (album.tracks.some(t => !trackSource(t)) && !pending) {
-    clearTimeout(renderAlbum.refresh);
-    renderAlbum.refresh = setTimeout(async () => {
-      if (currentAlbumId() !== album.id) return;
-      try {
-        album.tracks = (await fetchJson('getData.php?action=album&id=' + encodeURIComponent(album.id))).tracks;
-      } catch (e) { /* keep the old list */ }
-      renderAlbum(album);
-    }, 5000);
-  }
 }
 
 // highlights the playing track in the open album (and the album card in the overview)
@@ -466,31 +455,19 @@ function playTrack(album, index) {
   player.album = album;
   player.index = index;
   const t = album.tracks[index];
-  const src = trackSource(t);
-  pending = null;
+  const src = t.src;
   gapless.armed = false;
-  if (!src) {
-    // copy in the chosen format not derived yet – the server is converting; poll until it appears
+  if (nextAudio.dataset.src === src && nextAudio.readyState >= 2) {
+    // the preloaded element already holds this file – swap roles instead of reloading
     audio.pause();
-    audio.removeAttribute('src');
-    audio.load();
-    statusEl.textContent = 'Converting…';
-    pending = { album, index };
-    setTimeout(pollPending, 5000);
+    [audio, nextAudio] = [nextAudio, audio];
+    if (audio.paused) audio.play().catch(() => {});   // already started by the gapless switch, or start now
   } else {
-    statusEl.textContent = '';
-    if (nextAudio.dataset.src === src && nextAudio.readyState >= 2) {
-      // the preloaded element already holds this file – swap roles instead of reloading
-      audio.pause();
-      [audio, nextAudio] = [nextAudio, audio];
-      if (audio.paused) audio.play().catch(() => {});   // already started by the gapless switch, or start now
-    } else {
-      audio.src = src;
-      audio.dataset.src = src;
-      audio.play().catch(() => {});   // autoplay policy: the user clicked, so this normally succeeds
-    }
-    preloadNext(album, index);
+    audio.src = src;
+    audio.dataset.src = src;
+    audio.play().catch(() => {});   // autoplay policy: the user clicked, so this normally succeeds
   }
+  preloadNext(album, index);
   pbTitle.textContent = t.title;
   pbArtist.textContent = (t.artist || album.artist) + ' – ' + album.title;
   pbCover.innerHTML = coverHtml(album, 'pb-cover-img');
@@ -502,62 +479,16 @@ function playTrack(album, index) {
   updateMediaSession(album, t);
 }
 
-// Playback format chosen by the user: 'alac' (the master – only browsers that
-// decode ALAC, i.e. Safari), 'flac' (lossless) or 'aac' (256 kb/s, a third of
-// the data – the default). Remembered in localStorage.
-const FORMATS = { alac: 'ALAC · original', flac: 'FLAC · lossless', aac: 'AAC · 256 kb/s' };
 // Two <audio> elements: `audio` plays, `nextAudio` preloads the following track
 // so that album transitions (Tubular Bells…) are gapless – it is started exactly
 // when the current file runs out and the two elements swap roles.
 let audio = document.getElementById('audio');
 let nextAudio = document.getElementById('audio2');
-if (audio.canPlayType('audio/mp4; codecs="alac"') !== 'probably') delete FORMATS.alac;
-let FORMAT = 'aac';
-try { if (FORMATS[localStorage.getItem('music.format')]) FORMAT = localStorage.getItem('music.format'); } catch (e) { /* ignore */ }
-const pbFormat = document.getElementById('pb-format');
-pbFormat.innerHTML = Object.entries(FORMATS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
-pbFormat.value = FORMAT;
-pbFormat.addEventListener('change', () => {
-  FORMAT = pbFormat.value;
-  try { localStorage.setItem('music.format', FORMAT); } catch (e) { /* private mode */ }
-  // switch the running track to the new format at the same position
-  if (player.album) {
-    const pos = audio.currentTime, wasPlaying = !audio.paused;
-    nextAudio.removeAttribute('src'); delete nextAudio.dataset.src; nextAudio.load();   // preloaded in the old format
-    playTrack(player.album, player.index);
-    if (audio.src) {
-      // seeking is only possible once the new file's metadata is known
-      audio.addEventListener('loadedmetadata', () => { audio.currentTime = pos; }, { once: true });
-      if (!wasPlaying) audio.pause();
-    }
-  }
-  if (currentAlbumId()) render();   // ⏳ marks depend on the format
-});
-
-// URL of the track in the chosen format, or null while that copy is still being converted
-function trackSource(t) {
-  return t.formats ? t.formats[FORMAT] : null;
-}
-
-let pending = null;   // {album, index} waiting for its AAC copy
-async function pollPending() {
-  if (!pending) return;
-  const { album, index } = pending;
-  try {
-    const d = await fetchJson('getData.php?action=album&id=' + encodeURIComponent(album.id));
-    album.tracks = d.tracks;
-    if (currentAlbumId() === album.id) renderAlbum(album);
-  } catch (e) { /* retry below */ }
-  if (pending && pending.album === album && pending.index === index) {
-    if (trackSource(album.tracks[index])) playTrack(album, index);
-    else setTimeout(pollPending, 5000);
-  }
-}
 
 // loads the following track into the idle element (only when its file already exists)
 function preloadNext(album, index) {
   const n = album.tracks[index + 1];
-  const src = n ? trackSource(n) : null;
+  const src = n ? n.src : null;
   nextAudio.pause();
   if (src) {
     if (nextAudio.dataset.src !== src) { nextAudio.src = src; nextAudio.dataset.src = src; nextAudio.load(); }
@@ -579,7 +510,7 @@ function armGapless() {
   const remaining = audio.duration - audio.currentTime;
   if (remaining > 0.5) return;
   const n = player.album.tracks[player.index + 1];
-  if (!n || !nextAudio.dataset.src || nextAudio.dataset.src !== trackSource(n) || nextAudio.readyState < 3) return;
+  if (!n || !nextAudio.dataset.src || nextAudio.dataset.src !== n.src || nextAudio.readyState < 3) return;
   gapless.armed = true;
   setTimeout(() => {
     if (!gapless.armed || audio.paused) { gapless.armed = false; return; }

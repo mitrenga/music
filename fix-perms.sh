@@ -1,7 +1,7 @@
 #!/bin/bash
 # Ensure the cd/ and covers/ directories exist and have the ownership
 # and permissions the web server needs (PHP-FPM and nginx run as www-data
-# and must write covers, .meta.json, cover.jpg and the flac/aac copies, and serve files):
+# and must write covers, .meta.json and cover.jpg, and serve the FLAC files):
 #
 #   - directories: PROJECT-OWNER:www-data, 2770 (setgid - new files inherit the group)
 #   - files:       PROJECT-OWNER:www-data,  660

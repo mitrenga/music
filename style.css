@@ -304,8 +304,8 @@ body.has-player #fs-toggle { bottom: 96px; }
   background: #1a1d23;
   border-top: 1px solid #2a2e37;
   display: grid;
-  grid-template-columns: 56px minmax(120px, 1fr) auto minmax(160px, 2fr) auto 110px;
-  grid-template-areas: "cover info controls progress format volume";
+  grid-template-columns: 56px minmax(120px, 1fr) auto minmax(160px, 2fr) 110px;
+  grid-template-areas: "cover info controls progress volume";
   align-items: center;
   gap: 16px;
   padding: 10px 20px;
@@ -334,18 +334,6 @@ body.has-player #fs-toggle { bottom: 96px; }
 #pb-progress { grid-area: progress; display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #pb-seek { flex: 1; }
 #pb-volume { grid-area: volume; width: 110px; }
-#pb-format {
-  grid-area: format;
-  background: rgba(255,255,255,.12);
-  color: var(--text);
-  border: none;
-  border-radius: 8px;
-  padding: 6px 8px;
-  font-size: .8rem;
-  cursor: pointer;
-}
-#pb-format option { background: var(--card); }
-
 input[type=range] { accent-color: var(--accent); cursor: pointer; }
 
 @media (max-width: 760px) {
@@ -356,7 +344,7 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
   .album-head-info h2 { font-size: 1.25rem; }
   #player {
     grid-template-columns: 48px 1fr auto;
-    grid-template-areas: "cover info controls" "progress progress format";
+    grid-template-areas: "cover info controls" "progress progress progress";
     gap: 8px 12px;
     padding: 8px 12px;
   }
@@ -366,6 +354,3 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
   body.has-player #fs-toggle { bottom: 120px; }
 }
 
-/* track whose copy in the chosen format is still being generated */
-.track.converting { opacity: .5; }
-.track.converting .t-dur::after { content: " ⏳"; }
