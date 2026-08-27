@@ -263,7 +263,7 @@ main { padding: 12px 28px 40px; }
 .btn-cover:hover { background: rgba(255,255,255,.25); }
 
 /* ---- cover picker ---- */
-#cover-picker, #cover-confirm {
+#cover-picker, #cover-confirm, #dl-dialog {
   position: fixed;
   inset: 0;
   z-index: 400;   /* above the player bar and the fullscreen button */
@@ -311,6 +311,45 @@ main { padding: 12px 28px 40px; }
 .cp-confirm p { color: var(--muted); margin: 8px 0; }
 .cp-confirm p b { color: var(--text); }
 .cp-actions { display: flex; gap: 10px; justify-content: center; margin: 14px 0 8px; }
+
+/* ---- album download ---- */
+#dl-badge {
+  position: fixed;
+  top: 14px;
+  right: 130px;   /* left of reload + logout */
+  z-index: 150;
+  background: rgba(255,255,255,.12);
+  border: none;
+  color: var(--accent);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+body:not(.has-logout) #dl-badge { right: 72px; }
+#dl-badge:hover { background: rgba(255,255,255,.25); }
+#dl-badge.busy { color: var(--muted); animation: spin 1.5s linear infinite; }
+#dl-badge.error { color: #ff7b72; }
+.dl-box { width: min(560px, 100%); }
+.dl-form { display: flex; flex-direction: column; gap: 6px; }
+.dl-format { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 8px; background: var(--bg); cursor: pointer; }
+.dl-format:has(input:checked) { outline: 2px solid var(--accent); }
+.dl-format small { grid-column: 2; color: var(--muted); }
+.dl-format input { accent-color: var(--accent); }
+.dl-ascii { display: block; margin: 10px 0 4px; color: var(--muted); font-size: .9rem; cursor: pointer; }
+.dl-ascii input { accent-color: var(--accent); margin-right: 6px; }
+.dl-state { margin-top: 12px; }
+.dl-state p { margin: 6px 0; }
+.dl-state progress { width: 100%; height: 10px; accent-color: var(--accent); margin: 6px 0; }
+.dl-error { color: #ff7b72; }
+.dl-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent); color: #0b1a2b; border-radius: 8px; padding: 8px 16px; font-weight: 600; text-decoration: none;
+}
+.dl-link svg { width: 18px; height: 18px; fill: currentColor; }
+.dl-link:hover { filter: brightness(1.1); }
+.dl-form input:disabled + b, .dl-form input:disabled ~ small { opacity: .5; }
 
 .track-list { list-style: none; max-width: 900px; }
 .track-list .disc {

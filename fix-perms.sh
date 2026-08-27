@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ensure the cd/ and covers/ directories exist and have the ownership
+# Ensure the cd/, covers/ and tmp/ (prepared downloads) directories exist and have the ownership
 # and permissions the web server needs (PHP-FPM and nginx run as www-data
 # and must write covers, .meta.json and cover.jpg, and serve the FLAC files):
 #
@@ -29,7 +29,7 @@ fi
 # everything stays owned by the project owner, only the group opens it to the web server
 OWNER="$(stat -c %U "$ROOT")"
 
-for dir in cd covers; do
+for dir in cd covers tmp; do
     if [ ! -d "$ROOT/$dir" ]; then
         mkdir "$ROOT/$dir"
         echo "created  $ROOT/$dir"

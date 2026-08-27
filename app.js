@@ -5,6 +5,7 @@
 let DATA = null;
 let APP_TITLE = 'Music';   // overridden by "title" from config.json (via whoami)
 let RIGHTS = [];                 // permissions of the signed-in user (none used yet)
+let CAN_DOWNLOAD = false;        // album downloads: password users only (not @ip:… auto-logins)
 
 const content = document.getElementById('content');
 const breadcrumb = document.getElementById('breadcrumb');
@@ -38,12 +39,14 @@ async function init() {
       return;
     }
     RIGHTS = who.rights || [];
+    CAN_DOWNLOAD = !!who.user && !who.user.startsWith('@');
     updateLogoutButton(who.user);
   } catch (e) {
     content.innerHTML = '<p class="loading">Server is not responding (getData.php).</p>';
     return;
   }
   loadData();
+  if (CAN_DOWNLOAD) dlRefresh();   // a download prepared earlier shows up in the header
 }
 
 // ---- login ----
@@ -93,6 +96,7 @@ function showLogin() {
         body: JSON.stringify({ user: form.user.value, password: form.password.value }),
       });
       RIGHTS = res.rights || [];
+      CAN_DOWNLOAD = !!res.user && !res.user.startsWith('@');
       dlg.remove();
       updateLogoutButton(form.user.value);
       loadData();
@@ -349,13 +353,15 @@ function renderAlbum(album) {
     `<div class="album-head">${coverHtml(album, 'album-big-cover', true)}` +
     `<div class="album-head-info"><h2>${esc(album.title)}</h2><p>${meta}</p>` +
     `<button class="btn-play-album">${ICON.play} Play album</button>` +
+    (CAN_DOWNLOAD ? `<button class="btn-cover btn-download" title="Prepare a ZIP of the album in FLAC, ALAC, AAC or MP3">Download…</button>` : '') +
     (RIGHTS.includes('cover') ? `<button class="btn-cover" title="Search the Cover Art Archive">${album.cover ? 'Change cover…' : 'Find cover…'}</button>` +
       `<button class="btn-cover btn-cover-upload" title="Use an image file from this device">Upload cover…</button>` +
       `<input type="file" class="cover-file" accept="image/jpeg,image/png,image/gif,image/webp" hidden>` : '') +
     `</div></div>` +
     `<ol class="track-list">${rows}</ol>`;
   view.querySelector('.btn-play-album').addEventListener('click', () => playAlbum(album, 0));
-  view.querySelector('.btn-cover')?.addEventListener('click', () => openCoverPicker(album));
+  view.querySelector('.btn-cover:not(.btn-download)')?.addEventListener('click', () => openCoverPicker(album));
+  view.querySelector('.btn-download')?.addEventListener('click', () => openDownload(album));
   const coverFile = view.querySelector('.cover-file');
   view.querySelector('.btn-cover-upload')?.addEventListener('click', () => coverFile.click());
   coverFile?.addEventListener('change', () => { if (coverFile.files[0]) uploadCover(album, coverFile.files[0]); });
@@ -497,6 +503,150 @@ function confirmCover(album, c, picker) {
   });
 }
 
+// ---- album download ----
+// The server prepares ONE album per user as a ZIP in tmp/<user>/ (background
+// worker, see downloadLib.php); the browser polls its state every 2 s while
+// something is running and shows it in the dialog and in the header badge.
+const DL_FORMATS = [
+  ['flac', 'FLAC', 'lossless, the archive files as they are – ready immediately'],
+  ['alac', 'ALAC', 'Apple Lossless – iPhone, iPad, Apple Music library'],
+  ['aac', 'AAC 256 kb/s', 'small files, plays everywhere (.m4a)'],
+  ['mp3', 'MP3 V0', 'car radios and older players (~245 kb/s)'],
+];
+const dl = { job: { status: 'none' }, timer: null, album: null, notify: false, tooLarge: false };
+
+function fmtSize(b) {
+  return b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.round(b / 1e3) + ' kB';
+}
+function dlLabel(job) {
+  return `${job.artist} – ${job.title} [${(DL_FORMATS.find(f => f[0] === job.format) || [, job.format])[1]}]`;
+}
+function dlRunning(job) { return ['queued', 'converting', 'packing'].includes(job.status); }
+
+async function dlRefresh() {
+  try { dl.job = await fetchJson('getData.php?action=downloadStatus'); } catch (e) { return; }
+  dlRender();
+  clearTimeout(dl.timer);
+  if (dlRunning(dl.job)) dl.timer = setTimeout(dlRefresh, 2000);
+  else if (dl.job.status === 'ready' && dl.notify) {
+    dl.notify = false;
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification(APP_TITLE, { body: `Download ready: ${dlLabel(dl.job)}` });
+  }
+}
+
+// header badge + dialog contents follow dl.job
+function dlRender() {
+  const badge = document.getElementById('dl-badge');
+  const job = dl.job;
+  badge.hidden = job.status === 'none';
+  if (!badge.hidden) {
+    badge.classList.toggle('busy', dlRunning(job));
+    badge.classList.toggle('error', job.status === 'error');
+    badge.title = job.status === 'ready' ? `Download ready: ${dlLabel(job)}` : job.status === 'error' ? `Download failed: ${dlLabel(job)}` : `Preparing ${dlLabel(job)}…`;
+    badge.innerHTML = job.status === 'ready' ? '&#x2B73;' : job.status === 'error' ? '&#x26A0;' : '&#x21BB;';
+  }
+  const dlg = document.getElementById('dl-dialog');
+  if (dlg) dlDialogState(dlg);
+}
+
+// the dialog: format choice for the open album, or the state of the prepared download
+async function openDownload(album) {
+  document.getElementById('dl-dialog')?.remove();
+  dl.album = album ?? null;
+  const dlg = document.createElement('div');
+  dlg.id = 'dl-dialog';
+  const opts = DL_FORMATS.map(([k, l, d], i) =>
+    `<label class="dl-format"><input type="radio" name="format" value="${k}"${i === 0 ? ' checked' : ''}><b>${l}</b><small>${d}</small></label>`).join('');
+  dlg.innerHTML =
+    '<div class="cp-box dl-box">' +
+    '<button class="cp-close" title="Close">&times;</button>' +
+    (album ? `<h2>Download ${esc(album.artist)} – ${esc(album.title)}</h2>` +
+      `<form class="dl-form">${opts}` +
+      '<label class="dl-ascii"><input type="checkbox" name="ascii"> File names without accents (FAT32 sticks, car radios)</label>' +
+      '<p class="cp-status dl-estimate"></p>' +
+      '<div class="cp-actions"><button type="submit" class="dl-prepare">Prepare download</button></div></form>' : '<h2>Prepared download</h2>') +
+    '<div class="dl-state"></div>' +
+    '</div>';
+  document.body.appendChild(dlg);
+  const close = () => dlg.remove();
+  dlg.querySelector('.cp-close').addEventListener('click', close);
+  dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
+  const form = dlg.querySelector('.dl-form');
+  if (form) {
+    const estimate = async () => {
+      const el = dlg.querySelector('.dl-estimate');
+      el.textContent = 'Estimating size…';
+      try {
+        const r = await fetchJson(`getData.php?action=downloadEstimate&id=${encodeURIComponent(album.id)}&format=${form.format.value}`);
+        el.textContent = `${r.tracks} tracks · ${fmtTime(r.duration)} · ${r.exact ? '' : '≈ '}${fmtSize(r.size)}` +
+          (r.tooLarge ? ' – too large for a ZIP (4 GB limit)' : '');
+        dl.tooLarge = !!r.tooLarge;
+        dlDialogState(dlg);
+      } catch (e) { el.textContent = ''; }
+    };
+    form.addEventListener('change', e => { if (e.target.name === 'format') estimate(); });
+    form.addEventListener('submit', e => { e.preventDefault(); dlPrepare(album, form.format.value, form.ascii.checked, false); });
+    estimate();
+  }
+  dlDialogState(dlg);
+  dlRefresh();
+}
+
+function dlDialogState(dlg) {
+  const job = dl.job, box = dlg.querySelector('.dl-state');
+  const form = dlg.querySelector('.dl-form');
+  if (form) form.querySelectorAll('input, button').forEach(el => { el.disabled = dlRunning(job) || (el.classList.contains('dl-prepare') && dl.tooLarge); });
+  if (job.status === 'none') { box.innerHTML = form ? '' : '<p class="cp-status">Nothing is prepared.</p>'; return; }
+  const who = `<b>${esc(dlLabel(job))}</b>`;
+  let html;
+  if (job.status === 'queued') html = `<p>${who}</p><p class="cp-status">Waiting for a free conversion slot…</p>`;
+  else if (job.status === 'converting') {
+    const pct = job.tracksTotal ? Math.round(job.tracksDone / job.tracksTotal * 100) : 0;
+    html = `<p>${who}</p><progress max="100" value="${pct}"></progress>` +
+      `<p class="cp-status">Converting ${job.tracksDone}/${job.tracksTotal}${job.current ? ' – ' + esc(job.current) : ''}</p>`;
+  } else if (job.status === 'packing') html = `<p>${who}</p><progress max="100"></progress><p class="cp-status">Packing the ZIP…</p>`;
+  else if (job.status === 'ready') html = `<p>${who} · ${fmtSize(job.size)}</p>` +
+    `<div class="cp-actions"><a class="dl-link" href="${job.url}" download>${ICON.download} Download ZIP</a><button class="cp-cancel dl-delete">Delete</button></div>` +
+    '<p class="cp-status">Kept for a week, or until you prepare another album.</p>';
+  else html = `<p>${who}</p><p class="cp-status dl-error">Failed: ${esc(job.message || 'unknown error')}</p>` +
+    `<div class="cp-actions">${dl.album && dl.album.id === job.id ? '<button class="dl-retry">Try again</button>' : ''}<button class="cp-cancel dl-delete">Dismiss</button></div>`;
+  if (dlRunning(job)) html += '<div class="cp-actions"><button class="cp-cancel dl-cancel">Cancel</button></div>';
+  box.innerHTML = html;
+  box.querySelector('.dl-cancel, .dl-delete')?.addEventListener('click', async () => {
+    try { await fetchJson('getData.php?action=downloadCancel', { method: 'POST' }); } catch (e) { /* refresh shows the truth */ }
+    dlRefresh();
+  });
+  box.querySelector('.dl-retry')?.addEventListener('click', () => dlPrepare(dl.album, job.format, job.ascii, true));
+}
+
+async function dlPrepare(album, format, ascii, replace) {
+  const res = await fetch('getData.php?action=downloadPrepare', {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: album.id, format, ascii, replace }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 409 && data.status === 'exists') {
+    const j = data.job;
+    const what = dlRunning(j) ? `${dlLabel(j)} is being prepared right now` : `${dlLabel(j)} (${fmtSize(j.size)}) is ready for download`;
+    if (confirm(`${what}. Only one album can be prepared at a time – replace it?`)) return dlPrepare(album, format, ascii, true);
+    return;
+  }
+  if (!res.ok) { flashStatus('Download failed: ' + (data.error || res.status)); return; }
+  if (dlRunning(data)) {
+    dl.notify = true;
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  }
+  dl.job = data;
+  dlRender();
+  dlRefresh();
+}
+
+document.getElementById('dl-badge').addEventListener('click', () => {
+  const m = currentAlbumId();
+  const album = m !== null && dl.job.id === m ? DATA.albums.find(a => a.id === m) : null;
+  openDownload(album);
+});
+
 function flashStatus(msg) {
   statusEl.textContent = msg;
   setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 2500);
@@ -510,6 +660,7 @@ const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
   prev: '<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>',
   next: '<svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm7-18-6 8h4v6h4v-6h4z"/></svg>',
 };
 document.getElementById('pb-prev').innerHTML = ICON.prev;
 document.getElementById('pb-next').innerHTML = ICON.next;
@@ -660,7 +811,7 @@ document.addEventListener('keydown', e => {
   if (!DATA || e.target.matches('input, textarea')) return;   // not before login, not in the login form
   if (e.key === 'Escape' && document.fullscreenElement) return;   // Esc only leaves fullscreen
   if (e.key === 'Escape') {
-    const dlg = document.getElementById('cover-confirm') || document.getElementById('cover-picker');
+    const dlg = document.getElementById('cover-confirm') || document.getElementById('cover-picker') || document.getElementById('dl-dialog');
     if (dlg) { dlg.remove(); return; }
   }
   if (e.key === ' ') { e.preventDefault(); togglePlay(); }

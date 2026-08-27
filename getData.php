@@ -8,6 +8,12 @@
 //   getData.php?action=coverSearch&id=X   -> cover candidates from MusicBrainz / Cover Art Archive
 //   getData.php?action=coverSave&id=X     -> POST {mbid} downloads the chosen cover (needs the 'cover' right)
 //   getData.php?action=coverUpload&id=X   -> multipart POST, field 'cover' = own image file (needs the 'cover' right)
+//   getData.php?action=downloadEstimate&id=X&format=F -> size estimate of the album in a format
+//   getData.php?action=downloadPrepare    -> POST {id, format, ascii, replace} starts the background worker
+//   getData.php?action=downloadStatus     -> state of the user's prepared download (job.json)
+//   getData.php?action=downloadCancel     -> stops a running preparation and removes it
+//   getData.php?action=downloadDelete     -> removes the prepared ZIP
+//   (download actions are for password users only – see downloadLib.php)
 session_name('userSession');   // instead of the generic PHPSESSID (the domain is shared with other apps)
 session_start();
 header('Content-Type: application/json; charset=utf-8');
@@ -33,6 +39,7 @@ $action = $_GET['action'] ?? 'albums';
 
 // ---- authentication (shared logic in authLib.php) ----
 require __DIR__ . '/authLib.php';
+require __DIR__ . '/downloadLib.php';
 
 $config = is_file($CONFIG_FILE) ? json_decode(file_get_contents($CONFIG_FILE), true) : null;
 $user = resolveAuthUser($config);
@@ -49,6 +56,8 @@ function requireRight(array $rights, string $right): void {
 }
 
 if ($action === 'whoami') {
+    // expired download of this user (no cron – see downloadLib.php)
+    if (downloadAllowed($user)) downloadCleanup(downloadUserKey($user));
     echo json_encode([
         'auth' => $authenticated,
         'user' => $_SESSION['user'] ?? null,
@@ -531,6 +540,136 @@ if ($action === 'coverUpload') {
         exit;
     }
     storeCover($a, $b, (string)file_get_contents($f['tmp_name']), 400);
+}
+
+// ---- album download (tmp/<userKey>/, see downloadLib.php) ----
+
+// 403 for IP auto-logins: they have no identity to own a download directory
+function requireDownloadUser(?string $user): void {
+    if (!downloadAllowed($user)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'downloads are available to password users only']);
+        exit;
+    }
+}
+
+// job.json of the user + download URL; a worker that stopped reporting is turned into an error
+function downloadState(string $user): array {
+    $dir = downloadDir($user);
+    $job = jobRead($dir);
+    if ($job === null) return ['status' => 'none'];
+    if (jobIsDead($job)) {
+        $job['status'] = 'error';
+        $job['message'] = 'the preparation stopped unexpectedly (server process ended)';
+        $job['finishedAt'] = $job['finishedAt'] ?? time();
+        jobWrite($dir, $job);
+        rmTree("$dir/work");
+        @unlink("$dir/album.zip.part");
+    }
+    $out = array_intersect_key($job, array_flip(['id', 'artist', 'title', 'year', 'format', 'ascii', 'status',
+        'startedAt', 'finishedAt', 'tracksTotal', 'tracksDone', 'current', 'file', 'size', 'message']));
+    if ($job['status'] === 'ready' && !empty($job['file']) && is_file("$dir/{$job['file']}")) {
+        $out['url'] = urlPath('tmp', downloadUserKey($user), $job['file']);
+    } elseif ($job['status'] === 'ready') {
+        $out = ['status' => 'none'];   // ZIP removed by hand
+    }
+    return $out;
+}
+
+if ($action === 'downloadEstimate') {
+    requireDownloadUser($user);
+    $parts = albumPath($SRC, (string)($_GET['id'] ?? ''));
+    $meta = $parts ? albumMeta($parts[0], $parts[1], "$SRC/{$parts[0]}/{$parts[1]}", $AUDIO_EXT) : null;
+    $format = (string)($_GET['format'] ?? '');
+    if ($meta === null || !isset(DOWNLOAD_FORMATS[$format])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'album or format not found']);
+        exit;
+    }
+    $dir = "$SRC/{$parts[0]}/{$parts[1]}";
+    $flacSize = 0;
+    foreach ($meta['tracks'] as $t) $flacSize += (int)@filesize("$dir/{$t['file']}");
+    $size = match ($format) {
+        'flac' => $flacSize,
+        'alac' => (int)($flacSize * 1.02),   // ALAC is within a few percent of FLAC
+        default => (int)($meta['duration'] * DOWNLOAD_BITRATE[$format] / 8),
+    };
+    if (($c = coverFile($dir)) !== null) $size += (int)filesize($c);
+    echo json_encode(['size' => $size, 'duration' => $meta['duration'], 'tracks' => count($meta['tracks']),
+                      'exact' => $format === 'flac', 'tooLarge' => $size > DOWNLOAD_MAX_ZIP]);
+    exit;
+}
+
+// POST {id, format, ascii, replace}: writes job.json and starts the detached worker
+if ($action === 'downloadPrepare') {
+    requireDownloadUser($user);
+    $body = json_decode(file_get_contents('php://input'), true) ?? [];
+    $parts = albumPath($SRC, (string)($body['id'] ?? ''));
+    $meta = $parts ? albumMeta($parts[0], $parts[1], "$SRC/{$parts[0]}/{$parts[1]}", $AUDIO_EXT) : null;
+    $format = (string)($body['format'] ?? '');
+    if ($meta === null || !isset(DOWNLOAD_FORMATS[$format])) {
+        http_response_code(404);
+        echo json_encode(['error' => 'album or format not found']);
+        exit;
+    }
+    $ascii = !empty($body['ascii']);
+    $dir = downloadDir($user);
+    $state = downloadState($user);
+    $same = $state['status'] !== 'none' && $state['id'] === $meta['id'] && $state['format'] === $format && (bool)$state['ascii'] === $ascii;
+    if ($state['status'] === 'ready' && $same) {
+        echo json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);   // already prepared – nothing to do
+        exit;
+    }
+    if ($state['status'] !== 'none' && $state['status'] !== 'error' && !$same && empty($body['replace'])) {
+        http_response_code(409);
+        echo json_encode(['status' => 'exists', 'job' => $state], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    if (in_array($state['status'], ['queued', 'converting', 'packing'], true)) {
+        if ($same) {   // the same album is already being prepared – just report it
+            echo json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+        jobKill(jobRead($dir));
+    }
+    rmTree($dir);
+    if (!@mkdir($dir, 02770, true)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'tmp/ is not writable (run fix-perms.sh)']);
+        exit;
+    }
+    [$a, $b] = $parts;
+    $job = [
+        'id' => $meta['id'], 'artist' => $meta['artist'], 'title' => $meta['title'], 'year' => $meta['year'],
+        'discs' => $meta['discs'], 'format' => $format, 'ascii' => $ascii,
+        'status' => 'queued', 'pid' => null,
+        'startedAt' => time(), 'heartbeat' => time(), 'finishedAt' => null,
+        'tracksTotal' => count($meta['tracks']), 'tracksDone' => 0,
+        'file' => null, 'size' => null, 'message' => null,
+        'srcDir' => "$SRC/$a/$b", 'coverFile' => coverFile("$SRC/$a/$b"),
+        'tracks' => array_map(fn($t) => ['file' => $t['file'], 'no' => $t['no'], 'disc' => $t['disc'], 'title' => $t['title']], $meta['tracks']),
+    ];
+    jobWrite($dir, $job);
+    exec('nohup php ' . escapeshellarg(__DIR__ . '/download-worker.php') . ' ' . escapeshellarg(downloadUserKey($user)) . ' >/dev/null 2>&1 &');
+    http_response_code(202);
+    echo json_encode(downloadState($user), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if ($action === 'downloadStatus') {
+    requireDownloadUser($user);
+    echo json_encode(downloadState($user), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// cancel = stop the worker and remove everything; delete = remove the finished ZIP (same effect)
+if ($action === 'downloadCancel' || $action === 'downloadDelete') {
+    requireDownloadUser($user);
+    $dir = downloadDir($user);
+    jobKill(jobRead($dir));
+    rmTree($dir);
+    echo json_encode(['status' => 'none']);
+    exit;
 }
 
 http_response_code(400);

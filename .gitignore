@@ -4,3 +4,6 @@
 
 # configuration with passwords and allowed IPs
 /config.json
+
+# prepared album downloads (one ZIP per user, see downloadLib.php)
+/tmp/
