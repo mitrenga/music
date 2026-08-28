@@ -24,7 +24,12 @@ header {
   flex-wrap: wrap;
 }
 
-h1 { font-size: 1.5rem; font-weight: 600; }
+h1 { font-size: 1.5rem; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+h1 .home { color: var(--accent); display: inline-flex; }
+h1 .home svg { width: 1.3em; height: 1.3em; fill: currentColor; }
+h1 .home:hover { opacity: .8; }
+h1 .crumb-sep { color: var(--muted); font-weight: 400; }
+h1 .title-artist { color: var(--muted); font-weight: 400; font-size: .7em; align-self: baseline; }
 
 #breadcrumb a {
   color: var(--accent);

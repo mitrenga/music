@@ -319,9 +319,11 @@ function renderOverview() {
 
 // ---- album view ----
 function renderAlbum(album) {
-  pageTitle.textContent = album.title;
   document.title = `${album.artist} – ${album.title} – ${APP_TITLE}`;
-  breadcrumb.innerHTML = `<a href="#">${esc(APP_TITLE)}</a> › ${esc(album.artist)}`;
+  // header: [home icon → root] › Album – Artist
+  pageTitle.innerHTML = `<a href="#" class="home" title="${esc(APP_TITLE)}" aria-label="${esc(APP_TITLE)}">${ICON.home}</a>` +
+    `<span class="crumb-sep">›</span>${esc(album.title)}<span class="title-artist">${esc(album.artist)}</span>`;
+  breadcrumb.innerHTML = '';
 
   if (!album.tracks) {
     content.innerHTML = '<p class="loading">Loading tracks…</p>';
@@ -660,6 +662,7 @@ const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
   prev: '<svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>',
   next: '<svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>',
+  home: '<svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h6v-6h2v6h6v-8h3z"/></svg>',
   download: '<svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zm7-18-6 8h4v6h4v-6h4z"/></svg>',
 };
 document.getElementById('pb-prev').innerHTML = ICON.prev;
