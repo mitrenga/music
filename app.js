@@ -289,14 +289,14 @@ function renderOverview() {
       `<p>${album.trackCount} tracks · ${fmtTime(album.duration)}</p></div>`;
     return card;
   };
-  // consecutive albums of the same artist (the list is sorted by artist) form a
-  // highlighted group with the artist's name above and below; single albums
+  // consecutive albums from the same artist directory (the list is sorted by it)
+  // form a highlighted group with the directory name above and below; single albums
   // share a plain grid between the groups
   let loose = null;   // current grid of ungrouped albums
   const albums = DATA.albums;
   for (let i = 0; i < albums.length;) {
     let j = i + 1;
-    while (j < albums.length && albums[j].artist === albums[i].artist) j++;
+    while (j < albums.length && albums[j].artistDir === albums[i].artistDir) j++;
     if (j - i > 1) {
       loose = null;
       const group = document.createElement('section');
@@ -304,9 +304,9 @@ function renderOverview() {
       const grid = document.createElement('div');
       grid.className = 'album-grid';
       for (let k = i; k < j; k++) grid.appendChild(cardOf(albums[k]));
-      group.innerHTML = `<h3 class="artist-sep">${esc(albums[i].artist)}</h3>`;
+      group.innerHTML = `<h3 class="artist-sep">${esc(albums[i].artistDir)}</h3>`;
       group.appendChild(grid);
-      group.insertAdjacentHTML('beforeend', `<h3 class="artist-sep artist-sep-end">${esc(albums[i].artist)}</h3>`);
+      group.insertAdjacentHTML('beforeend', `<h3 class="artist-sep artist-sep-end">${esc(albums[i].artistDir)}</h3>`);
       list.appendChild(group);
     } else {
       if (!loose) { loose = document.createElement('div'); loose.className = 'album-grid'; list.appendChild(loose); }

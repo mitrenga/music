@@ -375,6 +375,7 @@ if ($action === 'albums') {
             if ($meta === null) continue;   // directory without audio files
             $albums[] = [
                 'id' => $meta['id'],
+                'artistDir' => $a,
                 'artist' => $meta['artist'],
                 'title' => $meta['title'],
                 'year' => $meta['year'],
@@ -384,9 +385,10 @@ if ($action === 'albums') {
             ] + albumCover($a, $b, "$SRC/$a/$b");
         }
     }
-    // artist, then year, then title
-    usort($albums, fn($x, $y) => [mb_strtolower($x['artist']), $x['year'] ?? 9999, mb_strtolower($x['title'])]
-                             <=> [mb_strtolower($y['artist']), $y['year'] ?? 9999, mb_strtolower($y['title'])]);
+    // artist directory (not the tag, so e.g. "~~" collects classical music at the
+    // end and one artist's albums stay together), then year, then title
+    usort($albums, fn($x, $y) => [mb_strtolower($x['artistDir']), $x['year'] ?? 9999, mb_strtolower($x['title'])]
+                             <=> [mb_strtolower($y['artistDir']), $y['year'] ?? 9999, mb_strtolower($y['title'])]);
     echo json_encode(['albums' => $albums], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
