@@ -198,6 +198,38 @@ function urlPath(string ...$segments): string {
     return implode('/', array_map('rawurlencode', $segments));
 }
 
+// Sort key for names, Czech dictionary order, case-insensitive. Compare the
+// keys with strcmp().
+// Primary: č ř š ž are letters of their own right after c r s z (so "Š" no
+// longer lands behind "Z" and "~"); every other diacritic is ignored
+// (á = a, é = ě = e, ů = u ...). Secondary, only for names equal on the primary
+// level: the unaccented variant first.
+// A separate/accented letter becomes base + "\xFF" + rank; 0xFF never occurs in
+// UTF-8, so it sorts above every following character of the unaccented variant.
+function sortKey(string $s): string {
+    static $primary = null, $secondary = null;
+    if ($primary === null) {
+        $groups = [
+            'a' => 'áàâäãåāăą', 'c' => 'čćçĉċ', 'd' => 'ďđ', 'e' => 'éěèêëēĕėę',
+            'g' => 'ğĝġģ', 'h' => 'ĥħ', 'i' => 'íìîïĩīĭįı', 'j' => 'ĵ', 'k' => 'ķ',
+            'l' => 'ĺľłļŀ', 'n' => 'ňńñņ', 'o' => 'óòôöõőøōŏ', 'r' => 'řŕŗ',
+            's' => 'šśşŝșß', 't' => 'ťţțŧ', 'u' => 'úůùûüũűūŭų', 'w' => 'ŵ',
+            'y' => 'ýÿŷ', 'z' => 'žźż',
+        ];
+        $own = ['č', 'ř', 'š', 'ž'];
+        $primary = ['æ' => 'ae', 'œ' => 'oe', 'þ' => 'th'];
+        $secondary = ['æ' => "a\xFF\x7F", 'œ' => "o\xFF\x7F", 'þ' => "t\xFF\x7F"];
+        foreach ($groups as $base => $accented) {
+            foreach (mb_str_split($accented) as $i => $ch) {
+                $secondary[$ch] = $base . "\xFF" . chr($i + 1);
+                $primary[$ch] = in_array($ch, $own, true) ? $base . "\xFF" : $base;
+            }
+        }
+    }
+    $s = mb_strtolower($s);
+    return strtr($s, $primary) . "\x00" . strtr($s, $secondary);
+}
+
 // audio files of an album directory, sorted by name (NN Title.ext)
 function audioFiles(string $dir, array $ext): array {
     $files = [];
@@ -387,8 +419,16 @@ if ($action === 'albums') {
     }
     // artist directory (not the tag, so e.g. "~~" collects classical music at the
     // end and one artist's albums stay together), then year, then title
-    usort($albums, fn($x, $y) => [mb_strtolower($x['artistDir']), $x['year'] ?? 9999, mb_strtolower($x['title'])]
-                             <=> [mb_strtolower($y['artistDir']), $y['year'] ?? 9999, mb_strtolower($y['title'])]);
+    foreach ($albums as &$al) {
+        $al['_ka'] = sortKey($al['artistDir']);
+        $al['_kt'] = sortKey($al['title']);
+    }
+    unset($al);
+    usort($albums, fn($x, $y) => strcmp($x['_ka'], $y['_ka'])
+                              ?: (($x['year'] ?? 9999) <=> ($y['year'] ?? 9999))
+                              ?: strcmp($x['_kt'], $y['_kt']));
+    foreach ($albums as &$al) unset($al['_ka'], $al['_kt']);
+    unset($al);
     echo json_encode(['albums' => $albums], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
