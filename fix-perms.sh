@@ -6,6 +6,8 @@
 #   - directories: PROJECT-OWNER:www-data, 2770 (setgid - new files inherit the group)
 #   - files:       PROJECT-OWNER:www-data,  660
 #   - config.json: PROJECT-OWNER:www-data,  660 (password reset rewrites it)
+#   - the "sharedPasswords" file from config.json, when set: group www-data, 660
+#     (owner is left alone - the file belongs to several projects)
 #
 # Nothing is world-accessible afterwards, so it is stricter than "chmod 777".
 # Must run as root (thumbnails are owned by www-data, changing their owner
@@ -44,4 +46,23 @@ if [ -f "$ROOT/config.json" ]; then
     chown "$OWNER:$WEB_GROUP" "$ROOT/config.json"
     chmod 660 "$ROOT/config.json"
     echo "fixed    $ROOT/config.json  ($OWNER:$WEB_GROUP, 660)"
+fi
+
+# shared password file (config.json "sharedPasswords") - password reset writes it
+if [ -f "$ROOT/config.json" ] && command -v php >/dev/null; then
+    SHARED="$(php -r '$c = json_decode(file_get_contents($argv[1]), true); echo is_string($c["sharedPasswords"] ?? null) ? $c["sharedPasswords"] : "";' "$ROOT/config.json")"
+    case "$SHARED" in
+        "") ;;
+        /*) ;;
+        *) SHARED="$ROOT/$SHARED" ;;
+    esac
+    if [ -n "$SHARED" ]; then
+        if [ -f "$SHARED" ]; then
+            chgrp "$WEB_GROUP" "$SHARED"     # follows a symlink to the real file
+            chmod 660 "$SHARED"
+            echo "fixed    $SHARED  (group $WEB_GROUP, 660)"
+        else
+            echo "MISSING  $SHARED  (sharedPasswords - password sign-in is refused until it exists)"
+        fi
+    fi
 fi

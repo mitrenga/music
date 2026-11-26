@@ -71,14 +71,12 @@ if ($action === 'login') {
     $body = json_decode(file_get_contents('php://input'), true) ?? [];
     $u = (string)($body['user'] ?? '');
     $p = (string)($body['password'] ?? '');
-    foreach (($config['users'] ?? []) as $usr) {
-        if (hash_equals((string)$usr['user'], $u) && hash_equals((string)$usr['password'], $p)) {
-            session_regenerate_id(true);
-            $_SESSION['user'] = $u;
-            setRememberCookie($config, $u);   // stay signed in across browser restarts
-            echo json_encode(['auth' => true, 'user' => $u, 'rights' => resolveRights($config, $u)]);
-            exit;
-        }
+    if (verifyPassword($CONFIG_FILE, $config, $u, $p)) {   // password from config.json or the shared file
+        session_regenerate_id(true);
+        $_SESSION['user'] = $u;
+        setRememberCookie($config, $u);   // stay signed in across browser restarts
+        echo json_encode(['auth' => true, 'user' => $u, 'rights' => resolveRights($config, $u)]);
+        exit;
     }
     http_response_code(401);
     echo json_encode(['auth' => false, 'error' => 'invalid username or password']);
@@ -159,21 +157,13 @@ if ($action === 'resetPassword') {
         exit;
     }
 
-    $saved = false;
-    foreach (($config['users'] ?? []) as $i => $usr) {
-        if ($usr['user'] === $entry['user']) {
-            $config['users'][$i]['password'] = $password;
-            $saved = file_put_contents($CONFIG_FILE,
-                json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                LOCK_EX) !== false;
-            break;
-        }
-    }
+    // stored as a hash – in the shared password file when configured, else in config.json
+    $saved = savePassword($CONFIG_FILE, $config, (string)$entry['user'], $password);
 
     unset($tokens[$token]);   // the token is single-use
     file_put_contents($RESET_FILE, json_encode($tokens), LOCK_EX);
 
-    if (!$saved) {   // user removed from config meanwhile, or config.json is not writable
+    if (!$saved) {   // user removed from config meanwhile, or the password file is not writable
         http_response_code(500);
         echo json_encode(['error' => 'could not save the new password']);
         exit;

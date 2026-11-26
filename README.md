@@ -34,7 +34,8 @@ authentication model: `config.json` from the gallery can be copied 1:1.
   everyone else with username + password (reset by e-mail); a password login
   is remembered indefinitely by a signed cookie renewed on every visit
   (invalidated by a password change or sign-out); `config.json` is
-  interchangeable between the two applications
+  interchangeable between the two applications, and one password file can be
+  shared by several installs of both (`sharedPasswords`)
 - **Fullscreen** — ⛶ button in the bottom right corner
 
 ## Layout
@@ -46,7 +47,7 @@ music/                 application root (webroot subdirectory /music/)
 ├── style.css          styling
 ├── getData.php        API (login, album list, album tracks)
 ├── auth.php           verification endpoint for nginx auth_request
-├── authLib.php        shared authentication logic (session, IPs, users)
+├── authLib.php        shared authentication logic (session, IPs, users, passwords) – identical to the gallery
 ├── downloadLib.php    album download helpers (job.json, names, ZIP writer)
 ├── download-worker.php background conversion of one album into a ZIP (started by getData.php)
 ├── nginx/             complete nginx server examples: root.conf (app alone in the web root), subdir.conf (several apps in subdirectories)
@@ -133,6 +134,19 @@ The config is read on every request; without the file authentication is
 disabled (safeguard). Password reset rewrites the file, so it must be
 writable by the web server (`fix-perms.sh` handles it). The only write right is
 `cover` — saving album covers (see below); users without it can only listen.
+
+`sharedPasswords` — path of a password file shared with other installs
+(galleries, other music archives), e.g.
+`"sharedPasswords": "/etc/media/passwords.json"` with the content
+`{ "name": { "password": "..." } }`. `config.json` still decides who may sign
+in here and with what rights, the shared file only holds the password
+(`password` keys in `config.json` are then ignored). Passwords are stored
+hashed in both places — plain text written by hand is hashed on the first
+sign-in; with `sharedPasswords` a password reset writes to the shared file
+and applies to all installs. A missing file
+or a user missing in it means password sign-in is refused. Keep the file
+outside the web root and writable by the web server (`fix-perms.sh`). Details
+in the gallery README.
 
 ## Covers
 
@@ -231,7 +245,7 @@ former `snippets/music-auth.conf`): add the `tmp/` location and the
 
 PHP-FPM runs as `www-data` and needs **write** access to `cd/` (`.meta.json`,
 `cover.jpg`), `covers/`, `tmp/` (prepared downloads) and `config.json`
-(password reset). `fix-perms.sh` sets directories to `OWNER:www-data` 2770 and
+(password reset) or the `sharedPasswords` file it names. `fix-perms.sh` sets directories to `OWNER:www-data` 2770 and
 files to 660 — run it again after adding CDs by hand:
 
 ```bash

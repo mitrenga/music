@@ -37,6 +37,119 @@ function autoLoginEntries(?array $config): array {
     return $entries;
 }
 
+// ---- passwords ----
+// A password lives either on the user's entry in config.json, or – when the
+// config has "sharedPasswords": "<file>" – in that file, shared by several
+// installs (galleries, music archives) so that one password works in all of
+// them. config.json still decides who may sign in here and with what rights;
+// the shared file only holds the password:
+//   { "name": { "password": "..." }, ... }
+// A stored password is a password_hash() value, or plain text (as written by
+// hand). With "sharedPasswords" set, "password" keys in config.json are
+// ignored, and a missing/unreadable file or a user missing in it means that
+// password sign-in is refused (it never falls back to "nothing is locked").
+
+// Path of the shared password file, or null when the config does not use one.
+// A relative path is taken from the application directory.
+function sharedPasswordsFile(?array $config): ?string {
+    $file = $config['sharedPasswords'] ?? null;
+    if (!is_string($file) || $file === '') return null;
+    return $file[0] === '/' ? $file : __DIR__ . '/' . $file;
+}
+
+// Reads the shared password file; null when it is missing or broken. Cached
+// for the request – auth.php may need it several times.
+function loadSharedPasswords(string $file, bool $fresh = false): ?array {
+    static $cache = [];
+    if (!$fresh && array_key_exists($file, $cache)) return $cache[$file];
+    $data = null;
+    $fh = is_file($file) ? @fopen($file, 'r') : false;
+    if ($fh !== false) {
+        flock($fh, LOCK_SH);   // never read a half-written file
+        $data = json_decode((string)stream_get_contents($fh), true);
+        flock($fh, LOCK_UN);
+        fclose($fh);
+    }
+    return $cache[$file] = is_array($data) ? $data : null;
+}
+
+// The stored password (hash or plain text) of a user listed in the config;
+// null when the user is not listed or has no usable password.
+function storedPassword(?array $config, string $user): ?string {
+    foreach (($config['users'] ?? []) as $usr) {
+        if (($usr['user'] ?? null) !== $user) continue;
+        $file = sharedPasswordsFile($config);
+        if ($file === null) {
+            $stored = $usr['password'] ?? null;
+        } else {
+            $stored = loadSharedPasswords($file)[$user]['password'] ?? null;
+        }
+        return is_string($stored) && $stored !== '' ? $stored : null;
+    }
+    return null;
+}
+
+function isPasswordHash(string $stored): bool {
+    return password_get_info($stored)['algo'] !== null;
+}
+
+// Checks a sign-in attempt. A plain-text password (in the shared file or in
+// config.json) is replaced by its hash on the first successful sign-in.
+function verifyPassword(string $configFile, ?array $config, string $user, string $password): bool {
+    $stored = storedPassword($config, $user);
+    if ($stored === null || $password === '') return false;
+    $file = sharedPasswordsFile($config);
+    if (isPasswordHash($stored)) {
+        if (!password_verify($password, $stored)) return false;
+        $upgrade = password_needs_rehash($stored, PASSWORD_DEFAULT);
+    } else {
+        if (!hash_equals($stored, $password)) return false;
+        $upgrade = true;
+    }
+    // best effort – when the file is not writable the plain password simply stays
+    if ($upgrade && ($file !== null || is_writable($configFile))) {
+        savePassword($configFile, $config, $user, $password);
+    }
+    return true;
+}
+
+// Stores the hash of a new password in the shared file. Read + change + write
+// happen under one exclusive lock, because several installs write this file.
+// The file must already exist – a mistyped path must not create a new one.
+function writeSharedPassword(string $file, string $user, string $password): bool {
+    $fh = is_file($file) ? @fopen($file, 'r+') : false;   // r+ follows a symlink and keeps it
+    if ($fh === false) return false;
+    flock($fh, LOCK_EX);
+    $data = json_decode((string)stream_get_contents($fh), true);
+    $ok = false;
+    if (is_array($data)) {
+        if (!is_array($data[$user] ?? null)) $data[$user] = [];
+        $data[$user]['password'] = password_hash($password, PASSWORD_DEFAULT);
+        $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+        $ok = rewind($fh) && ftruncate($fh, 0) && fwrite($fh, $json) === strlen($json) && fflush($fh);
+    }
+    flock($fh, LOCK_UN);
+    fclose($fh);
+    loadSharedPasswords($file, true);   // refresh the request cache
+    return $ok;
+}
+
+// Stores the hash of a password (password reset, or the upgrade of a plain
+// password on sign-in) for a user listed in the config – in the shared file
+// when one is configured, otherwise in config.json.
+function savePassword(string $configFile, ?array $config, string $user, string $password): bool {
+    foreach (($config['users'] ?? []) as $i => $usr) {
+        if (($usr['user'] ?? null) !== $user) continue;
+        $file = sharedPasswordsFile($config);
+        if ($file !== null) return writeSharedPassword($file, $user, $password);
+        $config['users'][$i]['password'] = password_hash($password, PASSWORD_DEFAULT);
+        return file_put_contents($configFile,
+            json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            LOCK_EX) !== false;
+    }
+    return false;
+}
+
 // ---- persistent login ("remember me") ----
 // After a password login a signed cookie keeps the user signed in even after
 // the PHP session expires. Browsers cap cookie lifetime at ~400 days, so the
@@ -48,12 +161,8 @@ const REMEMBER_COOKIE = 'userRemember';
 const REMEMBER_DAYS = 400;
 
 function rememberKey(?array $config, string $user): ?string {
-    foreach (($config['users'] ?? []) as $usr) {
-        if (($usr['user'] ?? null) === $user) {
-            return hash_hmac('sha256', (string)($usr['password'] ?? ''), 'music-remember:' . __DIR__);
-        }
-    }
-    return null;
+    $stored = storedPassword($config, $user);
+    return $stored === null ? null : hash_hmac('sha256', $stored, 'remember:' . __DIR__);
 }
 
 function rememberCookieOptions(int $expires): array {
